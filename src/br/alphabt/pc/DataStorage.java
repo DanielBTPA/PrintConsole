@@ -2,6 +2,7 @@ package br.alphabt.pc;
 
 import java.io.*;
 
+@Deprecated
 public class DataStorage<M extends Serializable> {
 
     public void saveState(String name, M obj) {

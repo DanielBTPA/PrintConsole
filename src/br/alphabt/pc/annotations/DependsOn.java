@@ -1,4 +1,4 @@
-package br.alphabt.pc;
+package br.alphabt.pc.annotations;
 
 
 import java.lang.annotation.*;

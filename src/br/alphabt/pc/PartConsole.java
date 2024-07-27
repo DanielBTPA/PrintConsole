@@ -1,47 +1,33 @@
 package br.alphabt.pc;
 
+import br.alphabt.pc.annotations.*;
+
 import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.io.Serializable;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.*;
 
-import static br.alphabt.pc.PartConsole.State.*;
+import static br.alphabt.pc.State.*;
 
 public abstract class PartConsole implements Questionable {
 
     public static final String MAIN = "main";
-
     public static final List<State> STATES_LIST_DEFAULT = Arrays.asList(CREATE, START, RUNNING, STOP, FINISH);
-
-    private final String name;
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (!(o instanceof PartConsole that)) return false;
-        return Objects.equals(getName(), that.getName()) && Objects.equals(cm, that.cm) && Objects.equals(pc, that.pc) && Objects.equals(bufReader, that.bufReader) && Objects.equals(states, that.states);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(getName(), cm, pc, bufReader, states);
-    }
-
+    protected String name;
     private ConsoleManager cm;
-    private PrintConsole pc;
+    protected PrintConsole pc;
 
-    protected PrintConsole getPrintConsole() {
+    public PrintConsole getPrintConsole() {
         return pc;
     }
 
-    @DependsOn
     private BufferedReader bufReader;
-
     final Deque<State> states;
 
-    public PartConsole(String name) {
-        this.name = name;
+    public PartConsole() {
         states = new ArrayDeque<>();
         orderFlags = new ArrayDeque<>();
     }
@@ -50,12 +36,12 @@ public abstract class PartConsole implements Questionable {
         return name;
     }
 
-    protected void restart() {
+    public void restart() {
         this.states.removeIf(e -> e.equals(FINISH));
         this.states.addLast(RESTART);
     }
 
-    protected void finish() {
+    public void finish() {
         if (!cm.oldPartConsole.isEmpty()) {
             this.callNext(cm.oldPartConsole);
 
@@ -65,7 +51,7 @@ public abstract class PartConsole implements Questionable {
         }
     }
 
-    protected <R> void finish(R result) {
+    public <R> void finish(R result) {
         if (!cm.oldPartConsole.isEmpty()) {
             this.callNext(cm.oldPartConsole, result);
 
@@ -75,87 +61,92 @@ public abstract class PartConsole implements Questionable {
         }
     }
 
-    protected void callNext(String pcName) {
+    public void callNext(String pcName) {
         cm.callNext(pcName).states.addAll(STATES_LIST_DEFAULT);
     }
 
-    protected <T> void callNext(String pcName, T result) {
+    public <T> void callNext(String pcName, T result) {
         PartConsole pc = cm.callNext(pcName);
         pc.states.addAll(STATES_LIST_DEFAULT);
         pc.result = result;
     }
 
-    protected <T> void callNext(String pcName, T send, String flag) {
+    public <T> void callNext(String pcName, T send, String flag) {
         PartConsole pc = cm.callNext(pcName);
         pc.states.addAll(STATES_LIST_DEFAULT);
         pc.requireNext(flag, send);
     }
 
-    protected void exit() {
+    public void exit() {
         cm.exit();
     }
 
-    protected abstract void onInitialize();
+
+    /* Life Cycle */
+    protected void onInitialize() {
+    }
+
+    protected void onStart() {
+    }
+
+    protected void onRestart() {
+    }
+
+    protected void onRunning() {
+    }
+
+    protected void onStop() {
+    }
+
+    protected void onFinish() {
+    }
+    /* ---------------------------- */
 
     protected abstract void onPrint(PrintConsole pc, String flag);
 
-    protected <E> E onRead(String read, String flag) {
-        return null;
-    }
-
-    protected void onSimpleRead(String read, String flag) {
+    protected void onRead(Object read, String flag) {
         pc.printMessage("Typed: " + read, PrintType.INFO);
-    }
-
-    protected <E> void onProcessRead(E element) {
     }
 
     protected void onError(Exception e, String flag) {
         throw new RuntimeException(e);
     }
 
-
-    protected void onStop() {
-        this.pc.clear();
-    }
-
-    protected void onFinish() {
-    }
-
-    protected void requireInput() {
+    public void requireInput() {
         this.pushRequire(null, true);
     }
-    protected void requireInput(String flag) {
+
+    public void requireInput(String flag) {
         this.pushRequire(flag, true);
     }
 
-    protected void requireNext(String flag) {
+    public void requireNext(String flag) {
         this.requireNext(flag, null);
     }
 
-    protected void requireNext(String flag, Object result) {
+    public void requireNext(String flag, Object result) {
         this.pushRequire(flag, false);
         this.result = result;
     }
 
-    protected void requireAll(String flag, Object result) {
+    public void requireAll(String flag, Object result) {
         this.requireNext(flag);
         this.requireInput(flag);
         this.result = result;
     }
 
-    protected void requireAll(String flag) {
-       this.requireAll(flag, null);
+    public void requireAll(String flag) {
+        this.requireAll(flag, null);
     }
 
     Object result = null;
 
-    protected Object getResult() {
+    public Object getResult() {
         return result;
     }
 
     private <E extends Serializable> E implQuestions() {
-        DependencyManager.getDependencyManager().injectInstance(false, questions);
+        DependencyManager.getDependencyManager().injectInstance(questions);
 
         final Map<String, String> qMap = questions.createQuestions();
 
@@ -198,11 +189,16 @@ public abstract class PartConsole implements Questionable {
         for (State state : states) {
             if (state == CREATE) {
                 this.pc = new PrintConsole();
+                this.bufReader = new BufferedReader(new InputStreamReader(System.in));
+                this.invokeDependencyInjection();
                 this.onInitialize();
                 if (orderFlags.isEmpty()) {
                     this.requireNext(null);
                 }
+            } else if (state == START) {
+                this.onStart();
             } else if (state == RUNNING) {
+                this.onRunning();
                 while (!orderFlags.isEmpty()) {
                     String fkv = orderFlags.pollLast();
                     String fv = getRequireInfo(fkv, true);
@@ -210,16 +206,10 @@ public abstract class PartConsole implements Questionable {
 
                     try {
                         if (fk.contentEquals("require")) {
-                            this.onPrint(pc, fv);
-                            this.callPartsPrintable(fv);
+                            this.invokePrint(pc, fv);
                         } else if (fk.contentEquals("requireInput")) {
                             String read = bufReader.readLine();
-                            this.onSimpleRead(read, fv);
-                            Object obj = this.onRead(read, fv);
-
-                            if (obj != null) {
-                                this.onProcessRead(obj);
-                            }
+                            this.invokeReadInput(read, fv);
                         }
                     } catch (Exception e) {
                         this.onError(e, fv);
@@ -232,10 +222,12 @@ public abstract class PartConsole implements Questionable {
             } else if (state == FINISH) {
                 this.onFinish();
                 this.orderFlags.clear();
+                this.pc.clear();
                 this.pc = null;
                 this.bufReader = null;
                 this.result = null;
             } else if (state == RESTART) {
+                this.onRestart();
                 cm.startMills = 0;
                 states.addAll(STATES_LIST_DEFAULT.subList(1, STATES_LIST_DEFAULT.size() - 1));
             }
@@ -245,13 +237,23 @@ public abstract class PartConsole implements Questionable {
 
     }
 
-    private void callPartsPrintable(String flag) {
-        Class<?> pcClass = this.getClass();
+    protected void invokePrint(PrintConsole pc, String flag) {
+        this.onPrint(pc, flag);
+        this.invokeMethodsAnnotatedWithPrint(flag, this);
+    }
+
+    protected void invokeReadInput(Object read, String flag) {
+        this.onRead(read, flag);
+        this.invokeMethodsAnnotatedWithInput(flag, this, read);
+    }
+
+    protected void invokeMethodsAnnotatedWithPrint(String flag, Object container) {
+        Class<?> pcClass = container.getClass();
 
         Method[] methods = pcClass.getMethods();
         for (Method method : methods) {
-            if (method.isAnnotationPresent(Printable.class)) {
-                if (flag.equals(method.getName()) || flag.equals(method.getAnnotation(Printable.class).name())) {
+            if (method.isAnnotationPresent(Print.class)) {
+                if (flag.equals(method.getName()) || flag.equals(method.getAnnotation(Print.class).flag())) {
                     Class<?>[] paramTypes = method.getParameterTypes();
                     Object[] params = new Object[paramTypes.length];
 
@@ -268,7 +270,7 @@ public abstract class PartConsole implements Questionable {
                     }
 
                     try {
-                        method.invoke(this, params);
+                        method.invoke(container, params);
                     } catch (IllegalAccessException | InvocationTargetException e) {
                         throw new RuntimeException(e);
                     }
@@ -277,9 +279,35 @@ public abstract class PartConsole implements Questionable {
         }
     }
 
+    protected void invokeMethodsAnnotatedWithInput(String flag, Object container, Object read) {
+        Class<?> pcClass = container.getClass();
+        Method[] methods = pcClass.getMethods();
+        for (Method method : methods) {
+            if (method.isAnnotationPresent(Input.class)) {
+                if (flag.equals(method.getName()) || flag.equals(method.getAnnotation(Input.class).flag())) {
+                    Class<?>[] paramTypes = method.getParameterTypes();
+                    Object[] params = new Object[paramTypes.length];
 
-    public enum State {
-        CREATE, START, RUNNING, RESTART, STOP, FINISH
+                    for (int i = 0; i < paramTypes.length; i++) {
+                        if (paramTypes[i].equals(String.class)) {
+                            params[i] = flag;
+                        } else if (paramTypes[i].equals(Object.class)) {
+                            params[i] = read;
+                        }
+                    }
+
+                    try {
+                        method.invoke(container, params);
+                    } catch (IllegalAccessException | InvocationTargetException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+            }
+        }
+    }
+
+    protected void invokeDependencyInjection() {
+        DependencyManager.getDependencyManager().injectInstance(this);
     }
 
     private Questions<Serializable> questions;
@@ -306,6 +334,125 @@ public abstract class PartConsole implements Questionable {
 
     private String getRequireInfo(String flag, boolean vok) {
         return flag.split(":")[vok ? 1 : 0];
+    }
+
+    protected static class PartConsoleRpc<C> extends PartConsole {
+
+        protected C rpc;
+
+        @DependsOn
+        private HashMap<State, Method> cycleCalls;
+
+        protected PartConsoleRpc(C rpc) {
+            this.rpc = rpc;
+        }
+
+        private void initCycleCalls() {
+            Method[] methods = rpc.getClass().getMethods();
+
+            for (Method method : methods) {
+                if (method.isAnnotationPresent(Cycle.class)) {
+                    Cycle cycle = method.getAnnotation(Cycle.class);
+
+                    if (cycle.value() != null) {
+                        cycleCalls.put(cycle.value(), method);
+                    } else {
+                        throw new NullPointerException("Initialize with State parameter");
+                    }
+                }
+            }
+        }
+
+        private void invokeMethodCycle(State state) {
+            try {
+                Method method = cycleCalls.get(state);
+
+                if (method != null) {
+                    method.invoke(rpc, (Object[]) null);
+                }
+            } catch (IllegalAccessException | InvocationTargetException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        @Override
+        protected void onInitialize() {
+            initCycleCalls();
+            invokeMethodCycle(CREATE);
+        }
+
+        @Override
+        protected void onStart() {
+            invokeMethodCycle(START);
+        }
+
+        @Override
+        protected void onRunning() {
+            invokeMethodCycle(RUNNING);
+        }
+
+        @Override
+        protected void onStop() {
+            invokeMethodCycle(STOP);
+        }
+
+        @Override
+        protected void onFinish() {
+            invokeMethodCycle(FINISH);
+        }
+
+        @Override
+        protected void onRestart() {
+            invokeMethodCycle(RESTART);
+        }
+
+        @Override
+        protected void invokePrint(PrintConsole pc, String flag) {
+            super.invokeMethodsAnnotatedWithPrint(flag, rpc);
+        }
+
+        @Override
+        protected void invokeDependencyInjection() {
+            // Pt1
+            Field[] fields = rpc.getClass().getDeclaredFields();
+            for (Field field : fields) {
+                if (field.getType().equals(PartConsole.class) && field.isAnnotationPresent(Self.class)) {
+                    field.setAccessible(true);
+                    try {
+                        field.set(rpc, this);
+                    } catch (IllegalAccessException e) {
+                        throw new RuntimeException(e);
+                    }
+                    field.setAccessible(false);
+                    break;
+                }
+            }
+
+            //Pt2
+            DependencyManager.getDependencyManager().injectInstance(rpc, this);
+        }
+
+        @Override
+        protected void invokeReadInput(Object read, String flag) {
+            super.invokeMethodsAnnotatedWithInput(flag, rpc, read);
+        }
+
+        @Override
+        protected void onPrint(PrintConsole pc, String flag) {
+        }
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof PartConsole that)) return false;
+        return Objects.equals(getName(), that.getName()) && Objects.equals(cm, that.cm) && Objects.equals(pc, that.pc) && Objects.equals(bufReader, that.bufReader) && Objects.equals(states, that.states);
+    }
+
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(getName(), cm, pc, bufReader, states);
     }
 
 }

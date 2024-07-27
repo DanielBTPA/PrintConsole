@@ -1,5 +1,7 @@
 package br.alphabt.pc;
 
+import br.alphabt.pc.annotations.Part;
+
 import java.lang.reflect.InvocationTargetException;
 import java.util.Collections;
 import java.util.HashMap;
@@ -39,30 +41,45 @@ public final class ConsoleManager implements Runnable {
         this.isRunning = false;
     }
 
-    public void register(Class<? extends PartConsole> pcClass, String name) {
+    public void register(Class<?> anyClass, String name) {
         try {
-            if (pcClass == null) {
-                throw new NullPointerException("Not be null...");
+            PartConsole partConsole = null;
+            if (PartConsole.class.isAssignableFrom(anyClass)) {
+                partConsole = (PartConsole) anyClass.getDeclaredConstructors()[0].newInstance();
+            } else {
+                if (anyClass.isAnnotationPresent(Part.class)) {
+                    Object rpc = anyClass.getDeclaredConstructors()[0].newInstance();
+                    partConsole = new PartConsole.PartConsoleRpc<>(rpc);
+                } else {
+                    throw new RuntimeException("The class " + anyClass.getSimpleName() + ".class does not have the 'Part.class' annotated.");
+                }
             }
 
-            PartConsole partConsole = (PartConsole) pcClass.getDeclaredConstructors()[0].newInstance(name);
-
-            if (name == null || name.isEmpty()) {
-                throw new NullPointerException("Name is not be null");
-            }
-
-            if (partConsoleHashMap.containsValue(partConsole)) {
-                throw new RuntimeException("This pc is already registered");
-            }
-
-            partConsoleHashMap.put(name, partConsole);
+            registerPartConsole(partConsole, name);
         } catch (InvocationTargetException | InstantiationException | IllegalAccessException | RuntimeException e) {
             if (e instanceof IllegalAccessException iae) {
-                iae.initCause(new RuntimeException("The constructor of class " + pcClass.getName() + " is not public."));
+                iae.initCause(new RuntimeException("The constructor of class " + anyClass.getSimpleName() + " is not public."));
             }
 
             throw new RuntimeException(e);
         }
+    }
+
+    public void registerPartConsole(PartConsole pc, String name) {
+        if (pc == null) {
+            throw new NullPointerException("Not be null...");
+        }
+
+        if (name == null || name.isEmpty()) {
+            throw new NullPointerException("Name is not be null");
+        }
+
+        if (partConsoleHashMap.containsValue(pc)) {
+            throw new RuntimeException("This pc is already registered");
+        }
+
+        pc.name = name;
+        partConsoleHashMap.put(name, pc);
     }
 
     PartConsole callNext(String pcName) {
@@ -101,7 +118,6 @@ public final class ConsoleManager implements Runnable {
         while (isRunning) {
             startMills = System.currentTimeMillis();
             pc = partConsoleHashMap.get(currentPartConsole);
-            DependencyManager.getDependencyManager().injectInstance(true, pc);
             pc.runOnConsole(this);
 
             long totalTimeInMills = totalTime();

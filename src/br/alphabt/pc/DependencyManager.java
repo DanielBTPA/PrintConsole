@@ -1,7 +1,7 @@
 package br.alphabt.pc;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
+import br.alphabt.pc.annotations.DependsOn;
+
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -36,7 +36,6 @@ public class DependencyManager {
         this.register(ArrayDeque.class);
         this.register(HashSet.class);
         this.register(LinkedHashSet.class);
-        this.register(BufferedReader.class, new InputStreamReader(System.in)); // Default for read terminal lines.
 
         blackList.add(PrintConsole.class);
         blackList.add(PartConsole.class);
@@ -51,21 +50,14 @@ public class DependencyManager {
         allowClasses.put(theClass, params);
     }
 
-    void injectInstance(boolean injectOnSuper, Object... objects) {
-        for (Object obj : objects) {
-            Class<?> subClass = obj.getClass();
-            Class<?> superClass = obj.getClass().getSuperclass();
-
-            inject(subClass, obj);
-
-            if (injectOnSuper && superClass != null) {
-                inject(superClass, obj);
-            }
+    public void injectInstance(Object... containers) {
+        for (Object o : containers) {
+            this.injectInstance(o);
         }
     }
 
-    private void inject(Class<?> pcClass, Object obj) {
-        Field[] fields = pcClass.getDeclaredFields();
+    public void injectInstance(Object obj) {
+        Field[] fields = obj.getClass().getDeclaredFields();
 
         for (Field field : fields) {
             if (field.isAnnotationPresent(DependsOn.class)) {

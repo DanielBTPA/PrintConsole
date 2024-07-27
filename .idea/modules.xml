@@ -3,6 +3,7 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/PrintConsole.iml" filepath="$PROJECT_DIR$/PrintConsole.iml" />
+      <module fileurl="file://$PROJECT_DIR$/PrintConsoleTest/PrintConsoleTest.iml" filepath="$PROJECT_DIR$/PrintConsoleTest/PrintConsoleTest.iml" />
     </modules>
   </component>
 </project>

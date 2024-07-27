@@ -1,5 +1,10 @@
 package br.alphabt.pc;
 
+import br.alphabt.pc.PartConsole;
+import br.alphabt.pc.PrintConsole;
+import br.alphabt.pc.PrintType;
+import br.alphabt.pc.annotations.QuestionResult;
+
 import java.io.Serializable;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;

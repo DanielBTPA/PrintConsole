@@ -2,7 +2,7 @@ package br.alphabt.pc;
 
 import java.io.Serializable;
 
-interface Questionable {
+public interface Questionable {
 
     void setQuestions(Questions<? extends Serializable> questions);
 
